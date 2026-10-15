@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+{% block title %}Invoice #{{ r.rental_id }} | DriveEase{% endblock %}
+{% block content %}
+<section class="page-wrap narrow-wrap">
+
+  <div class="invoice-toolbar no-print">
+    <a class="btn btn-outline" href="{{ url_for('dashboard') }}">← Back to dashboard</a>
+    <button class="btn btn-primary" onclick="window.print()">🖨 Print / Save PDF</button>
+  </div>
+
+  <div class="invoice-paper">
+
+    <!-- Header -->
+    <div class="inv-header">
+      <div class="inv-brand">
+        <span class="inv-logo">▰</span>
+        <div>
+          <b>DriveEase</b>
+          <small>Vehicle Rental Services</small>
+        </div>
+      </div>
+      <div class="inv-meta">
+        <div class="inv-title">BOOKING INVOICE</div>
+        <div class="inv-number">#{{ '%05d' % r.rental_id }}</div>
+        <small>Issued: {{ r.created_at[:10] }}</small>
+      </div>
+    </div>
+
+    <hr class="inv-divider">
+
+    <!-- Billed to / Booking info -->
+    <div class="inv-two-col">
+      <div>
+        <div class="inv-section-label">BILLED TO</div>
+        <b>{{ r.full_name }}</b>
+        <p>{{ r.email }}</p>
+        {% if r.phone %}<p>{{ r.phone }}</p>{% endif %}
+      </div>
+      <div class="inv-right-block">
+        <div class="inv-section-label">BOOKING DETAILS</div>
+        <div class="inv-detail-row"><span>Booking ID</span><b>#{{ r.rental_id }}</b></div>
+        <div class="inv-detail-row"><span>Pickup date</span><b>{{ r.start_date }}</b></div>
+        <div class="inv-detail-row"><span>Return date</span><b>{{ r.end_date }}</b></div>
+        <div class="inv-detail-row"><span>Status</span>
+          <b class="inv-status inv-status-{{ r.status }}">{{ r.status | upper }}</b>
+        </div>
+      </div>
+    </div>
+
+    <hr class="inv-divider">
+
+    <!-- Vehicle -->
+    <div class="inv-section-label" style="margin-bottom:12px">VEHICLE</div>
+    <div class="inv-vehicle-row">
+      <div class="inv-vehicle-symbol">▰</div>
+      <div class="inv-vehicle-info">
+        <b>{{ r.brand }} {{ r.model }}</b>
+        <small>{{ r.category }} · {{ r.fuel_type }} · {{ r.seats }} seats</small>
+        <small>Reg: {{ r.reg_number }}</small>
+      </div>
+      <div class="inv-vehicle-rate">
+        <small>Daily rate</small>
+        <b>₹{{ '{:,.2f}'.format(daily) }}</b>
+      </div>
+    </div>
+
+    <hr class="inv-divider">
+
+    <!-- Line items -->
+    <table class="inv-table">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th class="inv-col-right">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            {{ r.brand }} {{ r.model }} rental
+            <small class="inv-line-sub">{{ r.start_date }} → {{ r.end_date }} · {{ days }} day{{ 's' if days != 1 else '' }} × ₹{{ '{:,.2f}'.format(daily) }}</small>
+          </td>
+          <td class="inv-col-right">₹{{ '{:,.2f}'.format(r.total_amount) }}</td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr class="inv-subtotal">
+          <td>Subtotal</td>
+          <td class="inv-col-right">₹{{ '{:,.2f}'.format(r.total_amount) }}</td>
+        </tr>
+        <tr class="inv-subtotal">
+          <td>Advance paid ({{ ((advance / r.total_amount) * 100)|round|int }}%)</td>
+          <td class="inv-col-right inv-paid">₹{{ '{:,.2f}'.format(advance) }}</td>
+        </tr>
+        <tr class="inv-total-row">
+          <td>Balance due at pickup</td>
+          <td class="inv-col-right">₹{{ '{:,.2f}'.format(balance) }}</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <hr class="inv-divider">
+
+    <!-- Payment info -->
+    <div class="inv-two-col">
+      <div>
+        <div class="inv-section-label">PAYMENT</div>
+        <div class="inv-detail-row"><span>Method</span><b>{{ r.payment_method or '—' }}</b></div>
+        <div class="inv-detail-row"><span>Payment status</span>
+          <b class="inv-status inv-pay-{{ r.payment_status }}">{{ r.payment_status | upper }}</b>
+        </div>
+        <div class="inv-detail-row"><span>Advance recorded</span><b>₹{{ '{:,.2f}'.format(advance) }} ({{ ((advance / r.total_amount) * 100)|round|int }}%)</b></div>
+      </div>
+      <div class="inv-right-block inv-note-box">
+        <div class="inv-section-label">NOTE</div>
+        <p>This is a system-generated booking confirmation. Carry your original documents at pickup. Balance amount is due at the time of vehicle handover.</p>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="inv-footer">
+      <span>DriveEase Vehicle Rentals · support@driveease.in · +91 98765 43210</span>
+      <span>Thank you for choosing DriveEase!</span>
+    </div>
+
+  </div>
+</section>
+
+<style>
+@media print {
+  .no-print, nav, footer { display: none !important; }
+  body, .page-wrap { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+  .invoice-paper { box-shadow: none !important; border: none !important; }
+}
+</style>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% block title %}Documents — Rental #{{ rental.rental_id }} | DriveEase{% endblock %}
+{% block content %}
+<section class="page-wrap narrow-wrap">
+  <a class="back-link" href="{{ url_for('rentals_admin') }}">← Back to rentals</a>
+  <div class="panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Uploaded documents</h2>
+        <p>Rental #{{ rental.rental_id }} · {{ rental.full_name }} · {{ rental.brand }} {{ rental.model }}</p>
+      </div>
+      <span class="pill {{ rental.status }}">{{ rental.status }}</span>
+    </div>
+    {% if docs %}
+    <div class="doc-admin-grid">
+      {% for doc in docs %}
+      <div class="doc-admin-card">
+        <div class="doc-admin-label">
+          {% if doc.doc_type == 'driving_licence' %}🪪 Driving Licence
+          {% else %}📄 Aadhaar / Passport{% endif %}
+        </div>
+        {% set ext = doc.filename.rsplit('.',1)[1] %}
+        {% if ext in ('jpg','jpeg','png') %}
+          <div class="doc-admin-preview">
+            <button class="doc-admin-image-button" type="button"
+                    data-image="{{ url_for('rental_document_file', rental_id=rental.rental_id, doc_id=doc.doc_id) }}"
+                    data-download="{{ url_for('rental_document_file', rental_id=rental.rental_id, doc_id=doc.doc_id, download=1) }}"
+                    data-label="{{ 'Driving Licence' if doc.doc_type == 'driving_licence' else 'Aadhaar / Passport' }}"
+                    aria-label="Enlarge {{ doc.doc_type.replace('_', ' ') }}">
+              <img src="{{ url_for('rental_document_file', rental_id=rental.rental_id, doc_id=doc.doc_id) }}" alt="{{ doc.doc_type }}" class="doc-admin-img">
+            </button>
+            <a class="doc-download-icon" href="{{ url_for('rental_document_file', rental_id=rental.rental_id, doc_id=doc.doc_id, download=1) }}" aria-label="Download document" title="Download document">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3" /></svg>
+            </a>
+          </div>
+        {% else %}
+          <div class="doc-admin-pdf">
+            <span>📎</span>
+            <a href="{{ url_for('rental_document_file', rental_id=rental.rental_id, doc_id=doc.doc_id) }}" target="_blank">View PDF</a>
+            <a class="doc-download-icon" href="{{ url_for('rental_document_file', rental_id=rental.rental_id, doc_id=doc.doc_id, download=1) }}" aria-label="Download PDF" title="Download PDF">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3" /></svg>
+            </a>
+          </div>
+        {% endif %}
+        <small class="doc-admin-date">Uploaded: {{ doc.uploaded_at[:10] }}</small>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty" style="padding:32px">
+      <div class="empty-icon">📂</div>
+      <b>No documents uploaded</b>
+      <p>The customer did not upload any documents during booking.</p>
+    </div>
+    {% endif %}
+  </div>
+</section>
+<dialog class="doc-lightbox" id="documentLightbox" aria-label="Enlarged document preview">
+  <div class="doc-lightbox-toolbar">
+    <span id="documentLightboxTitle"></span>
+    <div class="doc-lightbox-actions">
+      <a class="doc-download-icon doc-lightbox-download" id="documentLightboxDownload" href="#" download aria-label="Download document" title="Download document">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3" /></svg>
+      </a>
+      <button class="doc-lightbox-close" type="button" aria-label="Close preview" title="Close preview">×</button>
+    </div>
+  </div>
+  <img class="doc-lightbox-image" id="documentLightboxImage" alt="">
+</dialog>
+<script>
+const documentLightbox = document.getElementById('documentLightbox');
+const documentLightboxImage = document.getElementById('documentLightboxImage');
+const documentLightboxTitle = document.getElementById('documentLightboxTitle');
+const documentLightboxDownload = document.getElementById('documentLightboxDownload');
+
+document.querySelectorAll('.doc-admin-image-button').forEach(function(button) {
+  button.addEventListener('click', function() {
+    documentLightboxImage.src = this.dataset.image;
+    documentLightboxImage.alt = this.dataset.label;
+    documentLightboxTitle.textContent = this.dataset.label;
+    documentLightboxDownload.href = this.dataset.download;
+    documentLightbox.showModal();
+  });
+});
+
+document.querySelector('.doc-lightbox-close').addEventListener('click', function() {
+  documentLightbox.close();
+});
+
+documentLightbox.addEventListener('click', function(event) {
+  if (event.target === documentLightbox) documentLightbox.close();
+});
+</script>
+{% endblock %}

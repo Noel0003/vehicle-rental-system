@@ -1,0 +1,482 @@
+{% extends 'base.html' %}
+{% block title %}Book {{ vehicle.brand }} {{ vehicle.model }} | DriveEase{% endblock %}
+{% block content %}
+<style>
+.booking-calendar{border:1px solid var(--line);border-radius:12px;padding:16px;background:var(--card-bg)}
+.calendar-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.calendar-heading strong{font-size:15px}
+.calendar-nav{display:flex;gap:6px}
+.calendar-nav button{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--card-bg);color:var(--ink);cursor:pointer}
+.calendar-nav button:disabled{opacity:.4;cursor:not-allowed}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center}
+.calendar-weekday{padding:6px 0;color:var(--muted);font-size:11px;font-weight:700}
+.calendar-day{min-height:36px;border:0;border-radius:8px;background:transparent;color:var(--ink);font:inherit}
+button.calendar-day{cursor:pointer}
+button.calendar-day:hover:not(:disabled){background:var(--pale)}
+.calendar-day:disabled{color:var(--muted);opacity:.45;cursor:not-allowed}
+.calendar-day.reserved{background:#fee2e2;color:#991b1b;text-decoration:line-through;opacity:1}
+.calendar-day.reserved-pending{background:#fef3c7;color:#92400e}
+.calendar-day.selected,.calendar-day.in-range{background:var(--blue);color:#fff;opacity:1;text-decoration:none}
+.calendar-day.in-range{opacity:.72}
+.calendar-empty{min-height:36px}
+.calendar-legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;color:var(--muted);font-size:12px}
+.calendar-legend span{display:inline-flex;align-items:center;gap:5px}
+.legend-swatch{width:12px;height:12px;border-radius:4px;background:#fee2e2}
+.legend-swatch.pending{background:#fef3c7}
+.legend-swatch.selected-swatch{background:var(--blue)}
+.calendar-message{margin:10px 0 0;color:var(--muted);font-size:13px}
+#dateSelectionError{color:#b91c1c}
+</style>
+<section class="page-wrap narrow-wrap">
+  <a class="back-link" href="{{ url_for('vehicles') }}">← Back to fleet</a>
+
+  <div class="booking-layout">
+
+    <!-- Vehicle summary card -->
+    <div class="booking-summary">
+      <div class="vehicle-visual">
+        {% if vehicle.image_url %}
+        <img class="vehicle-photo" src="{{ vehicle.image_url }}" alt="{{ vehicle.brand }} {{ vehicle.model }}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <span class="vehicle-symbol" style="display:none">▰</span>
+        {% else %}
+        <span class="vehicle-symbol">▰</span>
+        {% endif %}
+        <span class="category-tag">{{ vehicle.category }}</span>
+        <span class="avail-badge avail-available">Available</span>
+      </div>
+      <div class="booking-summary-body">
+        <div class="eyebrow">YOUR SELECTED VEHICLE</div>
+        <h2>{{ vehicle.brand }} {{ vehicle.model }}</h2>
+        <p>{{ vehicle.description }}</p>
+        <div class="summary-line"><span>Registration</span><b>{{ vehicle.reg_number }}</b></div>
+        <div class="summary-line"><span>Fuel / Seats</span><b>{{ vehicle.fuel_type }} · {{ vehicle.transmission }} · {{ vehicle.seats }} seats</b></div>
+        <div class="summary-line"><span>Daily rate</span><b>₹{{ '{:,.0f}'.format(vehicle.rental_price) }} / day</b></div>
+        <div class="summary-line"><span>Advance ({{ (advance_pct * 100)|int }}%)</span><b class="text-blue" id="advanceLine">—</b></div>
+        <div class="summary-line"><span>Balance on pickup</span><b id="balanceLine">—</b></div>
+      </div>
+    </div>
+
+    <!-- Booking form -->
+    <div class="panel booking-form" id="bookingPanel">
+
+      <!-- Step 1: Dates -->
+      <div id="step1">
+        <div class="form-heading">
+          <div class="step-badge">Step 1 of 3</div>
+          <h2>Choose your dates</h2>
+          <p>Select pickup and return dates for your rental.</p>
+        </div>
+        <div class="form-stack">
+          <label>Pickup date
+            <input type="text" id="start_date" placeholder="Choose a date on the calendar" readonly required>
+          </label>
+          <label>Return date
+            <input type="text" id="end_date" placeholder="Choose a date on the calendar" readonly required>
+          </label>
+          <div class="booking-calendar" aria-label="Vehicle availability calendar">
+            <div class="calendar-heading">
+              <strong id="calendarMonth" aria-live="polite"></strong>
+              <div class="calendar-nav">
+                <button type="button" id="calendarPrev" aria-label="Previous month">‹</button>
+                <button type="button" id="calendarNext" aria-label="Next month">›</button>
+              </div>
+            </div>
+            <div class="calendar-grid" id="calendarGrid" role="grid"></div>
+            <div class="calendar-legend">
+              <span><i class="legend-swatch"></i>Booked</span>
+              {% if pending_hold %}<span><i class="legend-swatch pending"></i>Awaiting admin review</span>{% endif %}
+              <span><i class="legend-swatch selected-swatch"></i>Your selected dates</span>
+            </div>
+            <p class="calendar-message" id="calendarMessage" aria-live="polite">
+              {% if pending_hold %}
+                A booking for this vehicle is awaiting admin review. New bookings are paused until that request is approved or cancelled.
+              {% else %}
+                Booked dates are disabled. Select an available pickup date, then an available return date.
+              {% endif %}
+            </p>
+            <p class="calendar-message" id="dateSelectionError" role="alert" style="display:none"></p>
+          </div>
+          <div class="estimate" id="estimateBox" style="display:none">
+            <div class="estimate-row"><span>Duration</span><strong id="estDays">—</strong></div>
+            <div class="estimate-row"><span>Total rental</span><strong id="estTotal">—</strong></div>
+            <div class="estimate-row highlight"><span>Advance now ({{ (advance_pct * 100)|int }}%)</span><strong id="estAdvance">—</strong></div>
+            <div class="estimate-row"><span>Balance on pickup</span><strong id="estBalance">—</strong></div>
+          </div>
+          <button class="btn btn-primary btn-full" id="toStep2Btn" type="button" disabled>Continue to documents →</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Documents -->
+      <div id="step2" style="display:none">
+        <div class="form-heading">
+          <div class="step-badge">Step 2 of 3</div>
+          <h2>Upload your documents</h2>
+          <p>Upload clear photos or scans. Accepted formats: JPG, PNG, PDF (max 5 MB each).</p>
+        </div>
+        <div class="form-stack">
+          <div class="doc-upload-grid">
+            <div class="doc-upload-card" id="cardDL">
+              <div class="doc-upload-icon">🪪</div>
+              <div class="doc-upload-info">
+                <b>Driving Licence</b>
+                <small>Front side — must be valid &amp; original</small>
+              </div>
+              <label class="doc-upload-btn" for="fileDL">Choose file</label>
+              <input type="file" id="fileDL" accept=".jpg,.jpeg,.png,.pdf" style="display:none" onchange="previewDoc(this,'cardDL','previewDL')">
+              <div class="doc-preview" id="previewDL" style="display:none"></div>
+            </div>
+            <div class="doc-upload-card" id="cardAP">
+              <div class="doc-upload-icon">📄</div>
+              <div class="doc-upload-info">
+                <b>Aadhaar Card / Passport</b>
+                <small>Any one valid government ID</small>
+              </div>
+              <label class="doc-upload-btn" for="fileAP">Choose file</label>
+              <input type="file" id="fileAP" accept=".jpg,.jpeg,.png,.pdf" style="display:none" onchange="previewDoc(this,'cardAP','previewAP')">
+              <div class="doc-preview" id="previewAP" style="display:none"></div>
+            </div>
+          </div>
+          <div class="doc-upload-note">
+            <span>ℹ️</span>
+            <small>Documents are stored securely and used only for identity verification. You may also carry originals at pickup.</small>
+          </div>
+          <div class="form-actions" style="margin-top:0">
+            <button type="button" class="btn btn-outline" onclick="goStep1()">← Back</button>
+            <button type="button" class="btn btn-primary" id="toStep3Btn" onclick="goStep3()">Continue to payment →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Payment -->
+      <div id="step3" style="display:none">
+        <div class="form-heading">
+          <div class="step-badge">Step 3 of 3</div>
+          <h2>Booking payment method</h2>
+          <p>This demo does not process or verify payments. No money will be taken.</p>
+        </div>
+        <form method="post" id="bookingForm" class="form-stack" enctype="multipart/form-data">
+          <input type="hidden" name="start_date" id="h_start">
+          <input type="hidden" name="end_date" id="h_end">
+
+          <!-- Hidden file inputs that mirror the step 2 selections -->
+          <input type="file" name="driving_licence" id="h_dl" style="display:none" accept=".jpg,.jpeg,.png,.pdf">
+          <input type="file" name="aadhaar_passport" id="h_ap" style="display:none" accept=".jpg,.jpeg,.png,.pdf">
+
+          <!-- Doc summary -->
+          <div class="doc-summary-row">
+            <span>🪪</span><span id="dlSummary" class="doc-summary-text">Driving Licence — not uploaded</span>
+          </div>
+          <div class="doc-summary-row">
+            <span>📄</span><span id="apSummary" class="doc-summary-text">Aadhaar / Passport — not uploaded</span>
+          </div>
+
+          <div class="pay-amount-box">
+            <span>Advance amount ({{ (advance_pct * 100)|int }}%)</span>
+            <strong id="payAmountDisplay">—</strong>
+            <small>All booking requests require admin approval. Only one request per vehicle can await review at a time.</small>
+          </div>
+
+          <label class="pay-method-label">Preferred payment method (demo only)</label>
+          <div class="pay-methods pay-methods-grid">
+            <label class="pay-option">
+              <input type="radio" name="payment_method" value="UPI" required>
+              <span class="pay-card"><span class="pay-icon">📱</span><b>UPI</b><small>GPay · PhonePe · Paytm</small></span>
+            </label>
+            <label class="pay-option">
+              <input type="radio" name="payment_method" value="Credit Card">
+              <span class="pay-card"><span class="pay-icon">💳</span><b>Credit Card</b><small>Visa · Mastercard · Amex</small></span>
+            </label>
+            <label class="pay-option">
+              <input type="radio" name="payment_method" value="Debit Card">
+              <span class="pay-card"><span class="pay-icon">🏧</span><b>Debit Card</b><small>All major bank cards</small></span>
+            </label>
+            <label class="pay-option">
+              <input type="radio" name="payment_method" value="Net Banking">
+              <span class="pay-card"><span class="pay-icon">🏦</span><b>Net Banking</b><small>SBI · HDFC · ICICI · Axis</small></span>
+            </label>
+            <label class="pay-option">
+              <input type="radio" name="payment_method" value="Wallet">
+              <span class="pay-card"><span class="pay-icon">👛</span><b>Wallet</b><small>DriveEase wallet balance</small></span>
+            </label>
+            <label class="pay-option">
+              <input type="radio" name="payment_method" value="Cash">
+              <span class="pay-card"><span class="pay-icon">💵</span><b>Cash</b><small>Pay at pickup counter</small></span>
+            </label>
+          </div>
+
+          <!-- UPI -->
+          <div class="pay-sub" id="subUPI" style="display:none">
+            <div class="pay-sub-title">📱 UPI Payment</div>
+            <div class="upi-qr-layout">
+              <div class="upi-qr-box">
+                <div class="qr-placeholder">UPI payments are not available in this demo.</div>
+              </div>
+              <div class="upi-qr-right">
+                <p>Submitting this booking will not initiate a UPI payment.</p>
+              </div>
+            </div>
+            <small class="pay-hint">Advance due: <strong id="upiAdvanceAmt">—</strong></small>
+          </div>
+          <div class="pay-sub" id="subCredit Card" style="display:none">
+            <div class="pay-sub-title">💳 Credit Card</div>
+            <p>Card payments are not available in this demo.</p>
+          </div>
+          <div class="pay-sub" id="subDebit Card" style="display:none">
+            <div class="pay-sub-title">🏧 Debit Card</div>
+            <p>Card payments are not available in this demo.</p>
+          </div>
+          <div class="pay-sub" id="subNet Banking" style="display:none">
+            <div class="pay-sub-title">🏦 Net Banking</div>
+            <p>Net banking is not available in this demo.</p>
+          </div>
+          <div class="pay-sub" id="subWallet" style="display:none">
+            <div class="pay-sub-title">👛 DriveEase Wallet</div>
+            <p>Wallet payments are not available in this demo.</p>
+          </div>
+          <div class="pay-sub" id="subCash" style="display:none">
+            <div class="pay-sub-title">💵 Cash at Pickup</div>
+            <p>This demo does not collect cash.</p>
+          </div>
+
+          <div class="pay-secure-note">Payments are not integrated in this demo. Submitting creates a booking request only.</div>
+          <div class="form-actions" style="margin-top:0">
+            <button type="button" class="btn btn-outline" onclick="goStep2()">← Back</button>
+            <button type="submit" class="btn btn-primary" id="payBtn" disabled>Confirm booking →</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+const rate = {{ vehicle.rental_price | tojson }};
+const advancePct = {{ advance_pct | tojson }};
+const startEl = document.getElementById('start_date');
+const endEl   = document.getElementById('end_date');
+const today = '{{ today }}';
+const reservedRanges = {{ reserved_ranges | tojson }};
+const pendingHold = {{ pending_hold | tojson }};
+let days = 0, total = 0, advance = 0;
+let calendarMonth = new Date(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1, 1);
+let selectionMode = 'start';
+
+function isoDate(year, month, day){
+  return year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+}
+
+function dateIsReserved(value){
+  return reservedRanges.some(function(range){
+    return value >= range.start && value <= range.end;
+  });
+}
+
+function dateInSelectedRange(value){
+  return startEl.value && endEl.value && value >= startEl.value && value <= endEl.value;
+}
+
+function setSelectionError(message){
+  const error = document.getElementById('dateSelectionError');
+  error.textContent = message;
+  error.style.display = message ? '' : 'none';
+}
+
+function selectCalendarDate(value){
+  setSelectionError('');
+  if(selectionMode === 'start' || !startEl.value){
+    startEl.value = value;
+    endEl.value = '';
+    selectionMode = 'end';
+  } else {
+    if(value < startEl.value){
+      setSelectionError('Return date must be on or after the selected pickup date.');
+      return;
+    }
+    const includesReservedDate = reservedRanges.some(function(range){
+      return range.start <= value && range.end >= startEl.value;
+    });
+    if(includesReservedDate){
+      setSelectionError('Your selected rental dates cannot include a booked day. Choose a return date before or after the reserved period.');
+      return;
+    }
+    endEl.value = value;
+    selectionMode = 'start';
+  }
+  calc();
+  renderCalendar();
+}
+
+function renderCalendar(){
+  const year = calendarMonth.getFullYear();
+  const month = calendarMonth.getMonth();
+  document.getElementById('calendarMonth').textContent =
+    calendarMonth.toLocaleDateString(undefined, {month:'long', year:'numeric'});
+  const grid = document.getElementById('calendarGrid');
+  grid.innerHTML = '';
+  ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(function(label){
+    const weekday = document.createElement('span');
+    weekday.className = 'calendar-weekday';
+    weekday.setAttribute('role', 'columnheader');
+    weekday.textContent = label;
+    grid.appendChild(weekday);
+  });
+  const offset = (new Date(year, month, 1).getDay() + 6) % 7;
+  for(let i = 0; i < offset; i++){
+    const blank = document.createElement('span');
+    blank.className = 'calendar-empty';
+    blank.setAttribute('aria-hidden', 'true');
+    grid.appendChild(blank);
+  }
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  for(let day = 1; day <= daysInMonth; day++){
+    const value = isoDate(year, month, day);
+    const range = reservedRanges.find(function(item){
+      return value >= item.start && value <= item.end;
+    });
+    const cell = document.createElement('button');
+    cell.type = 'button';
+    cell.className = 'calendar-day';
+    cell.setAttribute('role', 'gridcell');
+    cell.textContent = day;
+    const selected = value === startEl.value || value === endEl.value;
+    if(range){
+      cell.classList.add('reserved');
+      if(range.status === 'pending') cell.classList.add('reserved-pending');
+      cell.title = range.status === 'pending' ? 'Awaiting admin review' : 'Booked';
+    }
+    if(dateInSelectedRange(value)) cell.classList.add(value === startEl.value || value === endEl.value ? 'selected' : 'in-range');
+    cell.disabled = value < today || Boolean(range) || pendingHold;
+    if(!cell.disabled) cell.addEventListener('click', function(){ selectCalendarDate(value); });
+    if(selected) cell.setAttribute('aria-pressed', 'true');
+    grid.appendChild(cell);
+  }
+  const currentMonth = today.slice(0, 7);
+  document.getElementById('calendarPrev').disabled =
+    isoDate(year, month, 1).slice(0, 7) <= currentMonth;
+}
+
+document.getElementById('calendarPrev').addEventListener('click', function(){
+  calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
+  renderCalendar();
+});
+document.getElementById('calendarNext').addEventListener('click', function(){
+  calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
+  renderCalendar();
+});
+renderCalendar();
+
+startEl.addEventListener('click', function(){
+  selectionMode = 'start';
+  setSelectionError('Choose a new pickup date from the calendar.');
+});
+endEl.addEventListener('click', function(){
+  if(!startEl.value){
+    selectionMode = 'start';
+    setSelectionError('Choose a pickup date before selecting a return date.');
+    return;
+  }
+  selectionMode = 'end';
+  setSelectionError('Choose a return date on or after your pickup date.');
+});
+
+function fmt(n){ return '₹' + n.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+function calc(){
+  if(startEl.value && endEl.value && endEl.value >= startEl.value){
+    days    = Math.round((Date.parse(endEl.value + 'T00:00:00Z') - Date.parse(startEl.value + 'T00:00:00Z')) / 86400000) + 1;
+    total   = days * rate;
+    advance = Math.round(total * advancePct * 100) / 100;
+    const balance = total - advance;
+    document.getElementById('estimateBox').style.display = '';
+    document.getElementById('estDays').textContent    = days + ' day' + (days>1?'s':'');
+    document.getElementById('estTotal').textContent   = fmt(total);
+    document.getElementById('estAdvance').textContent = fmt(advance);
+    document.getElementById('estBalance').textContent = fmt(balance);
+    document.getElementById('advanceLine').textContent = fmt(advance);
+    document.getElementById('balanceLine').textContent = fmt(balance);
+    document.getElementById('toStep2Btn').disabled = false;
+  } else {
+    document.getElementById('estimateBox').style.display = 'none';
+    document.getElementById('toStep2Btn').disabled = true;
+    document.getElementById('advanceLine').textContent = '—';
+    document.getElementById('balanceLine').textContent = '—';
+  }
+  const hasDates = Boolean(startEl.value && endEl.value && endEl.value >= startEl.value);
+  document.getElementById('toStep2Btn').disabled = !hasDates || pendingHold;
+}
+
+document.getElementById('toStep2Btn').addEventListener('click', function(){
+  if(!startEl.value || !endEl.value || endEl.value < startEl.value || pendingHold){ alert('Please select valid available dates.'); return; }
+  document.getElementById('h_start').value = startEl.value;
+  document.getElementById('h_end').value   = endEl.value;
+  document.getElementById('step1').style.display = 'none';
+  document.getElementById('step2').style.display = '';
+});
+
+function goStep1(){ document.getElementById('step2').style.display='none'; document.getElementById('step1').style.display=''; }
+function goStep2(){ document.getElementById('step3').style.display='none'; document.getElementById('step2').style.display=''; }
+
+// Transfer files from step2 inputs to hidden form inputs in step3
+function transferFile(srcId, dstId){
+  const src = document.getElementById(srcId);
+  const dst = document.getElementById(dstId);
+  if(src.files.length === 0) return;
+  const dt = new DataTransfer();
+  dt.items.add(src.files[0]);
+  dst.files = dt.files;
+}
+
+function goStep3(){
+  const dlFile = document.getElementById('fileDL').files[0];
+  const apFile = document.getElementById('fileAP').files[0];
+  if(!dlFile || !apFile){
+    alert('Please upload both documents before proceeding to payment.');
+    return;
+  }
+  transferFile('fileDL','h_dl');
+  transferFile('fileAP','h_ap');
+  document.getElementById('payAmountDisplay').textContent = fmt(advance);
+  const ua = document.getElementById('upiAdvanceAmt');
+  if(ua) ua.textContent = fmt(advance);
+  document.getElementById('dlSummary').textContent = '✔ Driving Licence — ' + dlFile.name;
+  document.getElementById('dlSummary').style.color = 'var(--green)';
+  document.getElementById('apSummary').textContent = '✔ Aadhaar / Passport — ' + apFile.name;
+  document.getElementById('apSummary').style.color = 'var(--green)';
+  document.getElementById('payBtn').disabled = false;
+  document.getElementById('step2').style.display = 'none';
+  document.getElementById('step3').style.display = '';
+}
+
+function previewDoc(input, cardId, previewId){
+  const card    = document.getElementById(cardId);
+  const preview = document.getElementById(previewId);
+  if(!input.files.length){ preview.style.display='none'; card.classList.remove('doc-uploaded'); return; }
+  const file = input.files[0];
+  card.classList.add('doc-uploaded');
+  if(file.type.startsWith('image/')){
+    const reader = new FileReader();
+    reader.onload = function(e){
+      preview.innerHTML = '<img src="'+e.target.result+'" alt="preview">';
+      preview.style.display = '';
+    };
+    reader.readAsDataURL(file);
+  } else {
+    preview.innerHTML = '<span class="pdf-badge">📎 ' + file.name + '</span>';
+    preview.style.display = '';
+  }
+}
+
+const allMethods = ['UPI','Credit Card','Debit Card','Net Banking','Wallet','Cash'];
+document.querySelectorAll('input[name="payment_method"]').forEach(function(r){
+  r.addEventListener('change', function(){
+    allMethods.forEach(function(m){ document.getElementById('sub'+m).style.display='none'; });
+    document.getElementById('sub'+this.value).style.display='';
+  });
+});
+
+document.getElementById('bookingForm').addEventListener('submit', function(e){
+  const method = document.querySelector('input[name="payment_method"]:checked');
+  if(!method){ e.preventDefault(); alert('Please select a payment method.'); }
+});
+</script>
+{% endblock %}

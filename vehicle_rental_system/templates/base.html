@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" data-theme="{{ theme }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}DriveEase | Vehicle Rentals{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='extra.css') }}">
+</head>
+<body>
+<nav class="navbar">
+  <a class="brand" href="{{ url_for('home') }}">
+    <span class="brand-mark">D</span>
+    <span>drive<span class="brand-accent">ease</span><small>VEHICLE RENTALS</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="{{ url_for('vehicles') }}">Fleet</a>
+    {% if session.get('user_id') %}
+      <a href="{{ url_for('dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('profile') }}">Profile</a>
+      {% if session.get('role')=='admin' %}
+        <a href="{{ url_for('rentals_admin') }}">Rentals</a>
+        <a href="{{ url_for('maintenance_list') }}">Maintenance</a>
+        <a href="{{ url_for('customers_list') }}">Customers</a>
+      {% endif %}
+      <span class="user-chip">{{ session.get('name','User') }}</span>
+      <a class="btn btn-outline btn-small" href="{{ url_for('logout') }}">Sign out</a>
+    {% else %}
+      <a href="{{ url_for('login') }}">Sign in</a>
+      <a class="btn btn-primary btn-small" href="{{ url_for('register') }}">Get started</a>
+    {% endif %}
+    <a href="{{ url_for('toggle_theme') }}" class="theme-toggle" title="Toggle dark/light mode" aria-label="Toggle theme">
+      {% if theme == 'dark' %}☀️{% else %}🌙{% endif %}
+    </a>
+  </div>
+</nav>
+<main>
+  {% with messages=get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-wrap">
+        {% for category,message in messages %}
+          <div class="flash {{ category }}">{{ message }}<button onclick="this.parentElement.remove()">×</button></div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</main>
+<footer>
+  <div class="footer-inner">
+    <a class="brand footer-brand" href="{{ url_for('home') }}">
+      <span class="brand-mark">D</span>
+      <span>drive<span class="brand-accent">ease</span><small>VEHICLE RENTALS</small></span>
+    </a>
+    <span>Simple journeys. Better drives.</span>
+    <span>© {{ current_year }} DriveEase</span>
+  </div>
+</footer>
+</body>
+</html>

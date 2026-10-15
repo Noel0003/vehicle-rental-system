@@ -1,0 +1,275 @@
+{% extends 'base.html' %}
+{% block title %}My dashboard | DriveEase{% endblock %}
+{% block content %}
+<section class="page-wrap">
+  <div class="page-heading">
+    <div>
+      <div class="eyebrow">CUSTOMER SPACE</div>
+      <h1>Welcome, {{ session.get('name') }}.</h1>
+      <p>Track your bookings, payments, and plan your next journey.</p>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('vehicles') }}">Explore vehicles ↗</a>
+  </div>
+
+  <!-- Quick stats -->
+  <div class="stat-grid" style="margin-bottom:22px">
+    <div class="stat-card">
+      <span class="stat-icon blue">↗</span>
+      <span class="stat-label">Total bookings</span>
+      <strong>{{ rentals|length }}</strong>
+      <small>All time</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-icon amber">⏳</span>
+      <span class="stat-label">Confirmed</span>
+      <strong>{{ rentals|selectattr('status','equalto','approved')|list|length }}</strong>
+      <small>Ready for pickup</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-icon green">✔</span>
+      <span class="stat-label">Completed</span>
+      <strong>{{ rentals|selectattr('status','equalto','completed')|list|length }}</strong>
+      <small>Trips done</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-icon purple">₹</span>
+      <span class="stat-label">Total spent</span>
+      <strong>₹{{ '{:,.0f}'.format(total_paid) }}</strong>
+      <small>Recorded as paid</small>
+    </div>
+  </div>
+
+  <!-- Rentals table -->
+  <div class="panel" style="margin-bottom:24px">
+    <div class="panel-heading">
+      <div>
+        <h2>My rentals</h2>
+        <p>Your booking history and current requests</p>
+      </div>
+      <span class="subtle-count">{{ rentals|length }} booking(s)</span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Vehicle</th>
+            <th>Dates</th>
+            <th>Total</th>
+            <th>Advance paid</th>
+            <th>Payment</th>
+            <th>Booking status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rentals %}
+          <tr>
+            <td><b>#{{ r.rental_id }}</b></td>
+            <td>
+              <b>{{ r.brand }} {{ r.model }}</b>
+              <small class="table-sub">{{ r.reg_number }}</small>
+            </td>
+            <td>
+              {{ r.start_date }}
+              <small class="table-sub">to {{ r.end_date }}</small>
+            </td>
+            <td>₹{{ '{:,.0f}'.format(r.total_amount) }}</td>
+            <td>
+              ₹{{ '{:,.0f}'.format(r.advance_paid) }}
+              <small class="table-sub">{{ r.payment_method or '' }}</small>
+            </td>
+            <td><span class="pill pay-{{ r.payment_status }}">{{ r.payment_status }}</span></td>
+            <td>
+              <span class="pill {{ r.status }}">{{ r.status }}</span>
+              {% if r.status == 'pending' %}
+                <small class="table-sub">Awaiting review</small>
+              {% elif r.status == 'approved' %}
+                <small class="table-sub">Ready for pickup</small>
+              {% elif r.status == 'active' %}
+                <small class="table-sub">Currently on trip</small>
+              {% elif r.status == 'cancelled' and r.refund_status == 'initiated' %}
+                <small class="table-sub refund-note">Refund initiated: ₹{{ '{:,.2f}'.format(r.advance_paid) }} (demo only)</small>
+              {% endif %}
+            </td>
+            <td>
+              <div class="action-btns">
+              {% if r.status in ('pending','approved','active') %}
+                <button class="btn btn-danger btn-small" onclick="openCancel({{ r.rental_id }},'{{ r.brand }} {{ r.model }}',{{ r.advance_paid }},{{ 1 if r.payment_status=='paid' else 0 }})">Cancel</button>
+              {% elif r.status == 'completed' and r.rental_id not in reviewed_rental_ids %}
+                <button class="btn btn-outline btn-small" onclick="openReview({{ r.rental_id }},'{{ r.brand }} {{ r.model }}')">★ Review</button>
+              {% elif r.status == 'completed' and r.rental_id in reviewed_rental_ids %}
+                <span class="reviewed-badge">★ Reviewed</span>
+              {% endif %}
+              {% if r.status != 'cancelled' %}
+                <a class="btn btn-outline btn-small" href="{{ url_for('invoice', rental_id=r.rental_id) }}">🧾 Invoice</a>
+              {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="8" class="empty">
+              <div class="empty-icon">↗</div>
+              <b>No bookings yet</b>
+              <p>Explore the fleet and request your first rental.</p>
+              <a class="btn btn-primary btn-small" href="{{ url_for('vehicles') }}">Browse vehicles</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:24px">
+    <div class="panel-heading">
+      <div>
+        <h2>Customer reviews &amp; ratings</h2>
+        <p>Recent feedback about vehicles from the DriveEase community</p>
+      </div>
+      <span class="subtle-count">{{ customer_reviews|length }} recent review(s)</span>
+    </div>
+    {% if customer_reviews %}
+    <div class="reviews-grid">
+      {% for rv in customer_reviews %}
+      <article class="review-card">
+        <div class="review-card-header">
+          <div class="reviewer-avatar">{{ rv.full_name[0] }}</div>
+          <div>
+            <b>{{ rv.full_name }}</b>
+            <small>{{ rv.brand }} {{ rv.model }}</small>
+          </div>
+          <div class="review-stars" aria-label="{{ rv.rating }} out of 5 stars">
+            {% for s in range(rv.rating) %}★{% endfor %}{% for s in range(5 - rv.rating) %}☆{% endfor %}
+          </div>
+        </div>
+        <small class="table-sub">{{ '%.1f'|format(rv.avg_rating) }}/5 average · {{ rv.review_count }} rating(s) for this vehicle</small>
+        {% if rv.comment %}
+        <p class="review-comment">"{{ rv.comment }}"</p>
+        {% else %}
+        <p class="review-comment">No written comment.</p>
+        {% endif %}
+        <small class="review-date">{{ rv.created_at[:10] }}</small>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty" style="padding:28px">No customer reviews yet.</div>
+    {% endif %}
+  </div>
+
+  <!-- My reviews section -->
+  {% set completed = rentals|selectattr('status','equalto','completed')|list %}
+  {% if completed %}
+  <div class="panel">
+    <div class="panel-heading">
+      <div>
+        <h2>My reviews</h2>
+        <p>Share your experience with the DriveEase community</p>
+      </div>
+      <span class="subtle-count">{{ reviewed_rental_ids|length }} review(s) given</span>
+    </div>
+    <div class="reviews-empty-note">
+      {% if reviewed_rental_ids|length == 0 %}
+      <div class="empty" style="padding:24px">
+        <div class="empty-icon">★</div>
+        <b>No reviews yet</b>
+        <p>Click "★ Review" on any completed trip above to share your feedback.</p>
+      </div>
+      {% else %}
+      <p style="padding:16px 24px;font-size:12px;color:var(--muted);margin:0">You have reviewed {{ reviewed_rental_ids|length }} of {{ completed|length }} completed trip(s). Click "★ Review" on any unreviewed trip above.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+
+<!-- Cancel modal -->
+<div class="modal-overlay" id="cancelModal" style="display:none" onclick="if(event.target===this)closeCancel()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <h3>Cancel booking?</h3>
+        <p id="cancelVehicleName" style="font-size:12px;color:var(--muted);margin:4px 0 0"></p>
+      </div>
+      <button class="modal-close" onclick="closeCancel()">×</button>
+    </div>
+    <div id="cancelRefundNote" class="cancel-refund-note"></div>
+    <form method="post" id="cancelForm" class="form-stack" style="padding:0;margin-top:16px">
+      <div class="form-actions" style="margin-top:0">
+        <button type="button" class="btn btn-outline" onclick="closeCancel()">Keep booking</button>
+        <button type="submit" class="btn btn-danger">Yes, cancel booking</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Review modal -->
+<div class="modal-overlay" id="reviewModal" style="display:none" onclick="if(event.target===this)closeReview()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <h3>Rate your trip</h3>
+        <p id="reviewVehicleName" style="font-size:12px;color:var(--muted);margin:4px 0 0"></p>
+      </div>
+      <button class="modal-close" onclick="closeReview()">×</button>
+    </div>
+    <form method="post" action="{{ url_for('review_add') }}" class="form-stack" style="padding:0">
+      <input type="hidden" name="rental_id" id="reviewRentalId">
+      <div class="star-rating-wrap">
+        <p style="font-size:12px;font-weight:700;margin-bottom:10px">Your rating</p>
+        <div class="star-rating" id="starRating">
+          {% for i in range(1,6) %}
+          <label>
+            <input type="radio" name="rating" value="{{ i }}" required>
+            <span class="star">★</span>
+          </label>
+          {% endfor %}
+        </div>
+        <p class="star-label" id="starLabel">Tap a star to rate</p>
+      </div>
+      <label style="font-size:12px;font-weight:700;color:#44526a">Your review
+        <textarea name="comment" rows="4" placeholder="Tell us about your experience with this vehicle and our service..." style="width:100%;border:1px solid var(--line);border-radius:8px;padding:12px;background:var(--input-bg);color:var(--ink);resize:vertical;margin-top:8px;font:inherit"></textarea>
+      </label>
+      <div class="form-actions" style="margin-top:0">
+        <button type="button" class="btn btn-outline" onclick="closeReview()">Cancel</button>
+        <button type="submit" class="btn btn-primary">Submit review →</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openCancel(rentalId, vehicleName, advancePaid, isPaid){
+  document.getElementById('cancelVehicleName').textContent = vehicleName;
+  document.getElementById('cancelForm').action = '/customer/cancel/' + rentalId;
+  const note = document.getElementById('cancelRefundNote');
+  if(isPaid && advancePaid > 0){
+    note.innerHTML = '<span class="cancel-refund-icon">⚠️</span><div><b>Refund of ₹' + advancePaid.toLocaleString('en-IN', {minimumFractionDigits:2}) + ' will be recorded as initiated.</b><small>This demo does not process real payments or issue real refunds.</small></div>';
+    note.style.display = 'flex';
+  } else {
+    note.style.display = 'none';
+  }
+  document.getElementById('cancelModal').style.display = 'flex';
+}
+function closeCancel(){ document.getElementById('cancelModal').style.display = 'none'; }
+
+function openReview(rentalId, vehicleName){
+  document.getElementById('reviewRentalId').value = rentalId;
+  document.getElementById('reviewVehicleName').textContent = vehicleName;
+  document.getElementById('reviewModal').style.display = 'flex';
+}
+function closeReview(){ document.getElementById('reviewModal').style.display = 'none'; }
+
+const labels = ['','Terrible','Poor','Average','Good','Excellent'];
+document.querySelectorAll('.star-rating input').forEach(function(inp){
+  inp.addEventListener('change', function(){
+    document.getElementById('starLabel').textContent = labels[this.value] + ' (' + this.value + '/5)';
+    document.querySelectorAll('.star-rating .star').forEach(function(s,i){
+      s.style.color = i < inp.value ? '#f5a623' : '#ccc';
+    });
+  });
+});
+</script>
+{% endblock %}

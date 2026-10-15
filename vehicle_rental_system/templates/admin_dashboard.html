@@ -1,0 +1,208 @@
+{% extends 'base.html' %}
+{% block title %}Admin dashboard | DriveEase{% endblock %}
+{% block content %}
+<section class="page-wrap">
+  <div class="page-heading">
+    <div>
+      <div class="eyebrow">ADMINISTRATION</div>
+      <h1>Good day, {{ session.get('name') }}.</h1>
+      <p>Here's what's happening across your rental operation.</p>
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('vehicle_add') }}">＋ Add vehicle</a>
+  </div>
+
+  {% if stats.pending > 0 %}
+  <div class="alert-banner">
+    <span>⚠</span>
+    <div>
+      <b>{{ stats.pending }} older booking request{{ 's' if stats.pending > 1 else '' }} still need review.</b>
+      <small>New customer bookings are confirmed automatically when the selected dates are available.</small>
+    </div>
+    <a class="btn btn-primary btn-small" href="{{ url_for('rentals_admin') }}">View bookings →</a>
+  </div>
+  {% endif %}
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <span class="stat-icon blue">▰</span>
+      <span class="stat-label">Total vehicles</span>
+      <strong>{{ stats.vehicles }}</strong>
+      <small>In your fleet</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-icon purple">↗</span>
+      <span class="stat-label">Open rentals</span>
+      <strong>{{ stats.rentals }}</strong>
+      <small>Pending, approved or active</small>
+    </div>
+    <div class="stat-card">
+      <span class="stat-icon amber">⚙</span>
+      <span class="stat-label">Maintenance tasks</span>
+      <strong>{{ stats.maintenance }}</strong>
+      <small>Need attention</small>
+    </div>
+    <div class="stat-card" style="cursor:pointer" onclick="location.href='{{ url_for('customers_list') }}'">
+      <span class="stat-icon green">₹</span>
+      <span class="stat-label">Total revenue</span>
+      <strong>₹{{ '{:,.0f}'.format(stats.revenue) }}</strong>
+      <small>Across all active rentals</small>
+    </div>
+  </div>
+
+  <div class="quick-grid">
+    <a class="quick-card" href="{{ url_for('vehicles') }}">
+      <span>▰</span>
+      <div><b>Manage vehicles</b><small>Add, edit, remove, and update availability</small></div>
+      <span class="quick-arrow">↗</span>
+    </a>
+    <a class="quick-card" href="{{ url_for('rentals_admin') }}">
+      <span>↗</span>
+      <div>
+        <b>Manage rentals</b>
+        {% if stats.pending > 0 %}<span class="badge-count">{{ stats.pending }}</span>{% endif %}
+        <small>Review requests and update booking status</small>
+      </div>
+      <span class="quick-arrow">↗</span>
+    </a>
+    <a class="quick-card" href="{{ url_for('maintenance_list') }}">
+      <span>⚙</span>
+      <div><b>Maintenance records</b><small>Track service costs and vehicle repairs</small></div>
+      <span class="quick-arrow">↗</span>
+    </a>
+    <a class="quick-card" href="{{ url_for('customers_list') }}">
+      <span>♙</span>
+      <div><b>Customers</b><small>View all registered customers and their activity</small></div>
+      <span class="quick-arrow">↗</span>
+    </a>
+  </div>
+
+  <!-- Two column: recent rentals + top vehicles -->
+  <div class="dash-two-col">
+
+    <!-- Recent rentals -->
+    <div class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Recent bookings</h2>
+          <p>Latest activity — manage trip status</p>
+        </div>
+        <a class="text-link" href="{{ url_for('rentals_admin') }}">View all →</a>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th>Vehicle</th>
+              <th>Dates</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in recent %}
+            <tr>
+              <td><b>{{ r.full_name }}</b></td>
+              <td>{{ r.brand }} {{ r.model }}</td>
+              <td>{{ r.start_date }}<small class="table-sub">to {{ r.end_date }}</small></td>
+              <td><span class="pill {{ r.status }}">{{ r.status }}</span></td>
+              <td>
+                {% if r.status == 'pending' %}
+                <div class="inline-actions">
+                  <form method="post" action="{{ url_for('rental_quick', rental_id=r.rental_id, action='approve') }}">
+                    <button class="btn btn-action-approve btn-small">✓</button>
+                  </form>
+                  <form method="post" action="{{ url_for('rental_quick', rental_id=r.rental_id, action='reject') }}" onsubmit="return confirm('Reject?')">
+                    <button class="btn btn-action-reject btn-small">✗</button>
+                  </form>
+                </div>
+                {% elif r.status == 'approved' %}
+                <form method="post" action="{{ url_for('rental_quick', rental_id=r.rental_id, action='activate') }}">
+                  <button class="btn btn-action-activate btn-small">▶</button>
+                </form>
+                {% elif r.status == 'active' %}
+                <form method="post" action="{{ url_for('rental_quick', rental_id=r.rental_id, action='complete') }}">
+                  <button class="btn btn-action-complete btn-small">✔</button>
+                </form>
+                {% else %}
+                <span class="muted-text">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="empty">No rental requests yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Top booked vehicles -->
+    <div class="panel">
+      <div class="panel-heading">
+        <div>
+          <h2>Top booked vehicles</h2>
+          <p>Most popular vehicles in your fleet</p>
+        </div>
+      </div>
+      <div style="padding:8px 0">
+        {% for i, v in top_vehicles|enumerate %}
+        <div class="top-vehicle-row">
+          <span class="top-rank {% if i == 0 %}rank-gold{% elif i == 1 %}rank-silver{% elif i == 2 %}rank-bronze{% endif %}">{{ i + 1 }}</span>
+          <div class="top-vehicle-info">
+            <b>{{ v.brand }} {{ v.model }}</b>
+            <small>{{ v.category }}</small>
+          </div>
+          <div class="top-vehicle-stats">
+            <span class="top-bookings">{{ v.total_bookings }} bookings</span>
+            <span class="top-rating">
+              {% for s in range(v.avg_rating|round|int) %}★{% endfor %}{% for s in range(5 - v.avg_rating|round|int) %}☆{% endfor %}
+              <small>{{ '%.1f'|format(v.avg_rating) }}</small>
+            </span>
+          </div>
+        </div>
+        {% else %}
+        <div class="empty" style="padding:24px">No booking data yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Customer reviews -->
+  <div class="panel" style="margin-top:22px">
+    <div class="panel-heading">
+      <div>
+        <h2>Customer reviews</h2>
+        <p>Latest feedback from your customers</p>
+      </div>
+      <span class="subtle-count">{{ all_reviews|length }} review(s)</span>
+    </div>
+    {% if all_reviews %}
+    <div class="reviews-grid">
+      {% for rv in all_reviews %}
+      <div class="review-card">
+        <div class="review-card-header">
+          <div class="reviewer-avatar">{{ rv.full_name[0] }}</div>
+          <div>
+            <b>{{ rv.full_name }}</b>
+            <small>{{ rv.brand }} {{ rv.model }}</small>
+          </div>
+          <div class="review-stars">
+            {% for s in range(rv.rating) %}★{% endfor %}{% for s in range(5 - rv.rating) %}☆{% endfor %}
+          </div>
+        </div>
+        {% if rv.comment %}
+        <p class="review-comment">"{{ rv.comment }}"</p>
+        {% endif %}
+        <small class="review-date">{{ rv.created_at[:10] }}</small>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty" style="padding:28px">No reviews yet.</div>
+    {% endif %}
+  </div>
+
+</section>
+{% endblock %}

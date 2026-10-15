@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+{% block title %}Rental management | DriveEase{% endblock %}
+{% block content %}
+<section class="page-wrap">
+  <div class="page-heading">
+    <div>
+      <div class="eyebrow">ADMINISTRATION</div>
+      <h1>Rental management.</h1>
+      <p>Review, approve and track all bookings.</p>
+    </div>
+    <a class="btn btn-outline" href="{{ url_for('dashboard') }}">← Dashboard</a>
+  </div>
+
+  <!-- Filter tabs with counts -->
+  <div class="filter-tabs">
+    {% set counts = {'all': rentals|length, 'pending': rentals|selectattr('status','equalto','pending')|list|length, 'approved': rentals|selectattr('status','equalto','approved')|list|length, 'active': rentals|selectattr('status','equalto','active')|list|length, 'completed': rentals|selectattr('status','equalto','completed')|list|length, 'cancelled': rentals|selectattr('status','equalto','cancelled')|list|length} %}
+    {% for label, key in [('All','all'),('Pending','pending'),('Approved','approved'),('Active','active'),('Completed','completed'),('Cancelled','cancelled')] %}
+    <button class="filter-tab {% if loop.first %}active{% endif %}" data-filter="{{ key }}">
+      {{ label }}{% if counts[key] > 0 %}<span class="badge-count">{{ counts[key] }}</span>{% endif %}
+    </button>
+    {% endfor %}
+  </div>
+
+  <!-- Rental cards -->
+  <div class="rental-cards" id="rentalCards">
+    {% for r in rentals %}
+    <div class="rental-card" data-status="{{ r.status }}">
+
+      <!-- Card header: status + booking ID -->
+      <div class="rc-header rc-header-{{ r.status }}">
+        <div class="rc-status-row">
+          <span class="rc-status-dot"></span>
+          <span class="rc-status-label">{{ r.status | upper }}</span>
+          <span class="rc-id">#{{ r.rental_id }}</span>
+        </div>
+        {% if r.status == 'pending' %}
+        <small class="rc-hint">⏳ Awaiting your review</small>
+        {% elif r.status == 'approved' %}
+        <small class="rc-hint">✅ Approved — waiting for vehicle handover</small>
+        {% elif r.status == 'active' %}
+        <small class="rc-hint">🚗 Vehicle currently on trip</small>
+        {% elif r.status == 'completed' %}
+        <small class="rc-hint">✔ Trip completed</small>
+        {% elif r.status == 'cancelled' %}
+        <small class="rc-hint">✗ Booking cancelled</small>
+        {% endif %}
+      </div>
+
+      <!-- Card body -->
+      <div class="rc-body">
+
+        <!-- Customer + Vehicle -->
+        <div class="rc-two-col">
+          <div class="rc-section">
+            <div class="rc-section-label">CUSTOMER</div>
+            <b>{{ r.full_name }}</b>
+            <small>{{ r.email }}</small>
+          </div>
+          <div class="rc-section">
+            <div class="rc-section-label">VEHICLE</div>
+            <b>{{ r.brand }} {{ r.model }}</b>
+            <small>{{ r.reg_number }}</small>
+          </div>
+        </div>
+
+        <!-- Dates + Payment -->
+        <div class="rc-two-col">
+          <div class="rc-section">
+            <div class="rc-section-label">RENTAL DATES</div>
+            <b>{{ r.start_date }}</b>
+            <small>to {{ r.end_date }}</small>
+          </div>
+          <div class="rc-section">
+            <div class="rc-section-label">PAYMENT</div>
+            <b>₹{{ '{:,.0f}'.format(r.total_amount) }} total</b>
+            <small>
+              Advance: ₹{{ '{:,.0f}'.format(r.advance_paid) }} via {{ r.payment_method or '—' }}
+              &nbsp;<span class="pill pay-{{ r.payment_status }}">{{ r.payment_status }}</span>
+              {% if r.refund_status == 'initiated' %}
+                <br><span class="refund-note">Refund initiated: ₹{{ '{:,.2f}'.format(r.advance_paid) }} (demo only)</span>
+              {% endif %}
+            </small>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="rc-actions">
+          {% if r.status == 'pending' %}
+            <form method="post" action="{{ url_for('rental_quick', rental_id=r.rental_id, action='approve') }}">
+              <button class="rc-btn rc-btn-approve" type="submit">✓ Approve booking</button>
+            </form>
+            <form method="post" action="{{ url_for('rental_quick', rental_id=r.rental_id, action='reject') }}" onsubmit="return confirm('Reject this booking?')">
+              <button class="rc-btn rc-btn-reject" type="submit">✗ Reject</button>
+            </form>
+          {% elif r.status == 'approved' %}
+            <form method="post" action="{{ url_for('rental_quick', rental_id=r.rental_id, action='activate') }}">
+              <button class="rc-btn rc-btn-activate" type="submit">▶ Mark as active</button>
+            </form>
+            <form method="post" action="{{ url_for('rental_quick', rental_id=r.rental_id, action='reject') }}" onsubmit="return confirm('Cancel this booking?')">
+              <button class="rc-btn rc-btn-reject" type="submit">✗ Cancel</button>
+            </form>
+          {% elif r.status == 'active' %}
+            <form method="post" action="{{ url_for('rental_quick', rental_id=r.rental_id, action='complete') }}">
+              <button class="rc-btn rc-btn-complete" type="submit">✔ Mark as completed</button>
+            </form>
+          {% endif %}
+          <a class="rc-btn rc-btn-docs" href="{{ url_for('rental_documents', rental_id=r.rental_id) }}">📂 View documents</a>
+        </div>
+
+      </div>
+    </div>
+    {% else %}
+    <div class="empty" style="padding:40px;text-align:center">No rental requests found.</div>
+    {% endfor %}
+  </div>
+
+</section>
+
+<script>
+document.querySelectorAll('.filter-tab').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('.filter-tab').forEach(function(b){ b.classList.remove('active'); });
+    this.classList.add('active');
+    const f = this.dataset.filter;
+    document.querySelectorAll('.rental-card').forEach(function(card){
+      card.style.display = (f === 'all' || card.dataset.status === f) ? '' : 'none';
+    });
+  });
+});
+</script>
+{% endblock %}

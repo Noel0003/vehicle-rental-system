@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Customers | DriveEase{% endblock %}
+{% block content %}
+<section class="page-wrap">
+  <div class="page-heading">
+    <div>
+      <div class="eyebrow">ADMINISTRATION</div>
+      <h1>Customers.</h1>
+      <p>All registered customers and their booking activity.</p>
+    </div>
+    <a class="btn btn-outline" href="{{ url_for('dashboard') }}">← Dashboard</a>
+  </div>
+
+  <div class="panel">
+    <div class="panel-heading">
+      <div>
+        <h2>Customer accounts</h2>
+        <p>{{ customers|length }} registered customer(s)</p>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Joined</th>
+            <th>Total bookings</th>
+            <th>Total revenue</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in customers %}
+          <tr>
+            <td><b>#{{ c.user_id }}</b></td>
+            <td><b>{{ c.full_name }}</b></td>
+            <td>{{ c.email }}</td>
+            <td>{{ c.phone or '—' }}</td>
+            <td>{{ c.created_at[:10] }}</td>
+            <td><span class="pill approved">{{ c.total_bookings }}</span></td>
+            <td>₹{{ '{:,.0f}'.format(c.total_spent) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="empty">No customers registered yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}
